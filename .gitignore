@@ -1,0 +1,14 @@
+# 秘密の値
+.env
+.env.*
+
+# 生成物・キャッシュ
+node_modules/
+dist/
+.cloudflare/
+.void/
+.wrangler/
+.DS_Store
+
+# 自分の環境の値（雛形は *.example）
+hub/deploy.json

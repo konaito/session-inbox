@@ -1,0 +1,13 @@
+{
+  "name": "session-inbox-hub",
+  "account_id": "<Cloudflare account id>",
+  "domain": "hub.example.com",
+  "access_team_domain": "example.cloudflareaccess.com",
+  "access_aud": "<aud of the Access application that protects the hub domain>",
+  "access_emails": "you@example.com",
+  "parent_client_ids": "",
+  "nodes": [
+    { "name": "mac-a", "url": "https://node-a.example.com" },
+    { "name": "mac-b", "url": "https://node-b.example.com" }
+  ]
+}

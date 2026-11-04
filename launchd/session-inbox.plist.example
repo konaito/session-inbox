@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.session-inbox</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>5</integer>
+  <key>WorkingDirectory</key>
+  <string>__REPO__</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__HOME__/.bun/bin/bun</string>
+    <string>run</string>
+    <string>__REPO__/server.ts</string>
+  </array>
+  <key>StandardOutPath</key>
+  <string>__HOME__/Library/Logs/session-inbox.log</string>
+  <key>StandardErrorPath</key>
+  <string>__HOME__/Library/Logs/session-inbox.err.log</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>__HOME__</string>
+    <key>PATH</key>
+    <string>__HOME__/.local/bin:__HOME__/.bun/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>ACCESS_TEAM_DOMAIN</key>
+    <string>__ACCESS_TEAM_DOMAIN__</string>
+    <key>ACCESS_AUD</key>
+    <string>__ACCESS_AUD__</string>
+    <key>ACCESS_EMAILS</key>
+    <string>__ACCESS_EMAILS__</string>
+    <key>MACHINE_NAME</key>
+    <string>__MACHINE_NAME__</string>
+    <key>NODE_PORT</key>
+    <string>4322</string>
+    <key>NODE_HOST</key>
+    <string>__NODE_HOST__</string>
+    <key>NODE_ACCESS_AUD</key>
+    <string>__NODE_ACCESS_AUD__</string>
+    <key>NODE_SERVICE_CLIENT_ID</key>
+    <string>__NODE_SERVICE_CLIENT_ID__</string>
+    <key>NODE_TOKEN_FILE</key>
+    <string>__HOME__/.config/session-inbox/peer-token</string>
+  </dict>
+</dict>
+</plist>
