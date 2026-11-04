@@ -83,3 +83,14 @@ export function sendText(c: Client, s: { machine: string; sessionId: string }, t
     body: JSON.stringify(as ? { text, as } : { text }),
   });
 }
+
+export function spawnSession(c: Client, machine: string, dir: string, name?: string) {
+  return call<{ machine: string; cwd: string; tmux: string }>(c, `/api/sessions/spawn${q(c, { machine })}`, {
+    method: "POST",
+    body: JSON.stringify(name ? { dir, name } : { dir }),
+  });
+}
+
+export function stopSession(c: Client, s: { machine: string; sessionId: string }) {
+  return call<{ stopped: boolean; pid: number }>(c, `/api/sessions/${s.sessionId}/stop${q(c, s)}`, { method: "POST" });
+}

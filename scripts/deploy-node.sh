@@ -26,7 +26,7 @@ test -n "$CLIENT_ID"
 ssh "$HOST_SSH" 'mkdir -p ~/session-inbox/public ~/.config/session-inbox ~/.cloudflared && chmod 700 ~/.config/session-inbox ~/.cloudflared'
 scp -q "$SRC/server.ts" "$SRC/index.html" "$HOST_SSH":session-inbox/
 ssh "$HOST_SSH" 'mkdir -p ~/session-inbox/lib'
-scp -q "$SRC/lib/transcript.ts" "$HOST_SSH":session-inbox/lib/
+for f in "$SRC"/lib/*.ts; do case "$f" in *.test.ts) ;; *) scp -q "$f" "$HOST_SSH":session-inbox/lib/ ;; esac; done
 scp -q "$SRC"/public/* "$HOST_SSH":session-inbox/public/
 scp -q "$TOKEN_FILE" "$HOST_SSH":.config/session-inbox/peer-token
 scp -q "$CREDS" "$HOST_SSH":.cloudflared/"$TUNNEL_ID".json

@@ -40,10 +40,24 @@
   /* ---------- 一覧 ---------- */
   .side { min-width: 0; border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; background: var(--paper); }
   .side-head { padding: calc(18px + env(safe-area-inset-top)) 20px 12px; display: flex; align-items: baseline; gap: 10px; }
-  .side-head h1 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: .01em; }
-  .side-head .count { color: var(--faint); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .side-head h1 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: .01em; white-space: nowrap; }
+  .side-head .count { color: var(--faint); font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .side-head .conn { margin-left: auto; font-size: 12px; color: var(--faint); }
   .side-head .conn.bad { color: var(--shu); }
+  .side-head .spawn-btn { flex: none; font-size: 12px; color: var(--sub); padding: 3px 9px; border-radius: 999px; background: var(--wash); }
+  .side-head .spawn-btn:hover { background: var(--wash-2); color: var(--ink); }
+  .spawnform { margin: 0 12px 10px; padding: 10px; border-radius: 10px; background: var(--wash); display: grid; gap: 8px; }
+  .spawnform select, .spawnform input { font: inherit; font-size: 13px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--ink); width: 100%; }
+  .spawnform-row { display: flex; align-items: center; gap: 10px; font-size: 12px; }
+  .spawnform-row button { padding: 5px 12px; border-radius: 999px; background: var(--ink); color: var(--paper); font-size: 12px; }
+  .spawnform-row button[type="button"] { background: none; color: var(--sub); }
+  .spawnform-row .spawn-msg { color: var(--sub); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .stop { flex: none; font-size: 12px; color: var(--sub); padding: 4px 10px; border-radius: 999px; background: var(--wash); margin-right: 8px; }
+  .stop.arm { color: var(--paper); background: var(--shu); }
+  .hint-row { display: flex; align-items: baseline; gap: 12px; }
+  .hint-row .hint { flex: 1; min-width: 0; }
+  .as { flex: none; font-size: 12px; color: var(--faint); display: inline-flex; align-items: baseline; gap: 6px; }
+  .as input { font: inherit; font-size: 12px; width: 9em; padding: 2px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); color: var(--ink); }
   #list { overflow-y: auto; flex: 1; padding: 0 8px calc(12px + env(safe-area-inset-bottom)); }
   .row { display: block; width: 100%; min-width: 0; overflow: hidden; text-align: left; padding: 12px 12px 13px; border-radius: 10px; position: relative; }
   .row + .row::before { content: ""; position: absolute; top: 0; left: 12px; right: 12px; border-top: 1px solid var(--line); }
@@ -171,7 +185,12 @@
 <body>
 <div class="app view-list" id="app">
   <aside class="side">
-    <div class="side-head"><h1>セッション</h1><span class="count" id="count"></span><span class="conn" id="conn"></span></div>
+    <div class="side-head"><h1>セッション</h1><span class="count" id="count"></span><span class="conn" id="conn"></span><button class="spawn-btn" id="spawn-btn" type="button">＋ 子を立てる</button></div>
+    <form class="spawnform" id="spawnform" hidden>
+      <select id="spawn-m" aria-label="マシン"></select>
+      <input id="spawn-dir" placeholder="作業ディレクトリ（~/Documents/… か絶対パス）" autocomplete="off" spellcheck="false">
+      <div class="spawnform-row"><button type="submit" id="spawn-go">立てる</button><button type="button" id="spawn-cancel">やめる</button><span class="spawn-msg" id="spawn-msg"></span></div>
+    </form>
     <div id="list"></div>
   </aside>
 
@@ -183,6 +202,7 @@
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M12.5 4.5 7 10l5.5 5.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
         <div class="head-main"><div class="head-title" id="h-title"></div><div class="head-sub" id="h-sub"></div></div>
+        <button class="stop" id="h-stop" type="button" hidden>止める</button>
         <span class="state" id="h-state"><span class="pulse"></span><span id="h-state-t"></span></span>
       </header>
       <div id="scroll"><div id="feed"></div></div>
@@ -194,7 +214,7 @@
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 13V3M3.5 7.5 8 3l4.5 4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
         </div>
-        <div class="hint" id="hint"></div>
+        <div class="hint-row"><div class="hint" id="hint"></div><label class="as">名乗り <input id="as" placeholder="空なら本人" autocomplete="off" spellcheck="false" maxlength="64"></label></div>
       </form>
     </template>
   </section>
@@ -362,6 +382,7 @@ function openChat(id) {
   $("back").onclick = () => { location.hash = ""; };
   $("feed").innerHTML = `<div class="note">読み込み中…</div>`;
   wireComposer();
+  wireSpawn();
   app.className = "app view-chat";
   renderList(); renderHead(); poll();
 }
@@ -393,6 +414,7 @@ function renderHead() {
     $("h-title").textContent = cur.title || "終了したセッション";
     $("h-sub").textContent = "このセッションは終了しました";
     st.className = "state gone"; $("h-state-t").textContent = "終了";
+    $("h-stop").hidden = true;
     $("input").disabled = true; $("input").placeholder = "終了したセッションには送れません";
     $("now").classList.remove("on");
     syncSend();
@@ -400,6 +422,7 @@ function renderHead() {
   }
   cur.title = s.title || s.name || cur.title;
   $("h-title").textContent = cur.title || s.sessionId;
+  $("h-stop").hidden = !(s.spawned || parentOf(s));
   const p = parentOf(s);
   const kids = childrenOf(s);
   const link = (x) => `<a href="#/s/${x.sessionId}">${esc(x.title || x.name || x.sessionId.slice(0, 8))}</a>`;
@@ -499,7 +522,8 @@ async function poll() {
     }
     if (changed) { renderFeed(); cur.loaded = true; }
   } catch (e) {
-    if (cur && !cur.loaded) $("feed").innerHTML = `<div class="note warn">${esc(e.message)}</div>`;
+    // 立ち上げ直後の子は transcript がまだ無い。最初の文が届くまで静かに待つ
+    if (cur && !cur.loaded) $("feed").innerHTML = /transcript not found/.test(e.message) ? `<div class="note">まだ会話がありません。文を送ると始まります</div>` : `<div class="note warn">${esc(e.message)}</div>`;
   } finally {
     polling = false;
   }
@@ -538,14 +562,61 @@ function wireComposer() {
     i.value = ""; fit(); syncSend();
     renderFeed(); $("scroll").scrollTop = $("scroll").scrollHeight;
     try {
-      await api(`/api/sessions/${cur.id}/send` + q(), { method: "POST", body: JSON.stringify({ text }) });
+      const as = ($("as").value || "").trim();
+      await api(`/api/sessions/${cur.id}/send` + q(), { method: "POST", body: JSON.stringify(as ? { text, as } : { text }) });
       p.state = "waiting"; p.at = Date.now();
     } catch (err) {
       p.state = "failed"; p.error = err.message;
     }
     renderFeed();
   };
+  // 名乗りは端末ごとに覚える（Muse などのエージェントが画面から送るとき用。空なら本人として送る）
+  try { $("as").value = localStorage.getItem("as") || ""; } catch {}
+  $("as").addEventListener("input", () => { try { localStorage.setItem("as", $("as").value.trim()); } catch {} });
+  // 止める。2回押しで実行する
+  const stopBtn = $("h-stop");
+  let armed = 0;
+  stopBtn.onclick = async () => {
+    if (!cur) return;
+    if (!armed) { armed = setTimeout(() => { armed = 0; stopBtn.classList.remove("arm"); stopBtn.textContent = "止める"; }, 4000); stopBtn.classList.add("arm"); stopBtn.textContent = "本当に止める"; return; }
+    clearTimeout(armed); armed = 0; stopBtn.classList.remove("arm"); stopBtn.textContent = "止めています…"; stopBtn.disabled = true;
+    try { await api(`/api/sessions/${cur.id}/stop` + q(), { method: "POST" }); } catch (err) { stopBtn.textContent = `止められない: ${err.message}`; stopBtn.disabled = false; return; }
+    stopBtn.disabled = false; stopBtn.textContent = "止める";
+    setTimeout(loadSessions, 1500);
+  };
   if (!coarse) setTimeout(() => i.focus(), 0);
+}
+
+// 子を立てる。ノードが tmux で claude を起動し、一覧に出たら開く
+function wireSpawn() {
+  const form = $("spawnform"), btn = $("spawn-btn"), msg = $("spawn-msg");
+  btn.onclick = () => {
+    const sel = $("spawn-m");
+    sel.innerHTML = machines.filter((m) => m.ok).map((m) => `<option value="${esc(m.name)}">${esc(m.name)}</option>`).join("");
+    form.hidden = !form.hidden;
+    if (!form.hidden) $("spawn-dir").focus();
+  };
+  $("spawn-cancel").onclick = () => { form.hidden = true; msg.textContent = ""; };
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    const m = $("spawn-m").value, dir = $("spawn-dir").value.trim();
+    if (!m || !dir) return;
+    $("spawn-go").disabled = true; msg.textContent = "立てています…";
+    try {
+      const r = await api(`/api/sessions/spawn?m=${encodeURIComponent(m)}`, { method: "POST", body: JSON.stringify({ dir }) });
+      msg.textContent = `${r.tmux} を起動。一覧に出るのを待っています…`;
+      for (let i = 0; i < 20; i++) {
+        await new Promise((res) => setTimeout(res, 2000));
+        await loadSessions();
+        const s = sessions.find((x) => x.machine === r.machine && x.cwd === r.cwd);
+        if (s) { form.hidden = true; msg.textContent = ""; $("spawn-dir").value = ""; location.hash = `#/s/${s.sessionId}`; break; }
+        if (i === 19) msg.textContent = "一覧に出てきません。マシン側で tmux を見てください";
+      }
+    } catch (err) {
+      msg.textContent = `立てられない: ${err.message}`;
+    }
+    $("spawn-go").disabled = false;
+  };
 }
 
 // ---------- 画面の切り替え ----------
