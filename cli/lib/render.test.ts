@@ -7,7 +7,7 @@ import type { ChatItem } from "../../lib/transcript";
 const emptyDetail: SessionDetail = {
   machine: "mac-b", sessionId: "aaaaaaaa-0000-0000-0000-000000000000", name: null, cwd: null, status: null, waitingFor: null, startedAt: null,
   title: null, permissionMode: null, gitBranch: null, worktree: null, prLinks: [], awaySummary: null,
-  pending: [], lastHuman: null, lastInjected: null, lastAssistant: null, recentTools: [], offset: 0,
+  pending: [], parent: null, lastHuman: null, lastInjected: null, lastAssistant: null, recentTools: [], offset: 0,
 };
 
 test("renderList は止まっているマシンを出す", () => {

@@ -31,6 +31,7 @@ export function renderSummary(d: SessionDetail, s: Session | null): string {
     `- worktree: ${d.worktree ? `${d.worktree.worktreePath}（${d.worktree.worktreeBranch}、元は ${d.worktree.originalBranch}）` : NA}`,
     `- PR: ${d.prLinks.length ? d.prLinks.map((p) => p.prUrl).join(", ") : NA}`,
     `- 開始: ${d.startedAt ? when(new Date(d.startedAt).toISOString()) : NA}`,
+    `- 親: ${d.parent ? `${d.parent.machine ?? "?"}/${d.parent.sessionIdPrefix ?? "?"}/${d.parent.label}（最後の文 ${when(d.parent.at)}）` : "なし"}`,
     `- 保留中の割り込み: ${d.pending?.length ? d.pending.map((p) => `${p.from ?? p.via} → ${oneLine(p.text).slice(0, 80)}`).join(" / ") : "なし"}`,
     ``,
     `## ここまでの要約（Claude Code 自身が書いたもの）`,

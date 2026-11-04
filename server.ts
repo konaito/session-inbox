@@ -201,6 +201,7 @@ async function localSessions() {
         title: sum?.title ?? null,
         last: sum?.last ?? null,
         lastAt: sum?.lastAt ?? null,
+        parent: sum?.parent ?? null,
         cwd: r.cwd,
         kind: r.kind,
         status: r.status ?? null,

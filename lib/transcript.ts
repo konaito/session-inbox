@@ -42,6 +42,26 @@ export function isValidWebFrom(from: string): boolean {
 export function isValidViaHost(host: string): boolean {
   return HOST_RE.test(host);
 }
+// 親エージェントの名前「<マシン>/<sessionId の先頭8文字>/<役割>」を分ける。古い「<マシン>/<役割>」や「<役割>」も読む
+export type AgentFrom = { machine: string | null; sessionIdPrefix: string | null; label: string };
+export function parseAgentFrom(from: string): AgentFrom | null {
+  if (!from.startsWith("agent:")) return null;
+  const parts = from.slice(6).split("/");
+  if (parts.length >= 3 && /^[0-9a-f]{8}$/.test(parts[1])) return { machine: parts[0], sessionIdPrefix: parts[1], label: parts.slice(2).join("/") };
+  if (parts.length >= 2) return { machine: parts[0], sessionIdPrefix: null, label: parts.slice(1).join("/") };
+  return { machine: null, sessionIdPrefix: null, label: parts[0] };
+}
+// 最後に文を送ってきた親
+export type Parent = AgentFrom & { at: string | null };
+export function parentFrom(items: ChatItem[]): Parent | null {
+  for (let i = items.length - 1; i >= 0; i--) {
+    const it = items[i];
+    if (it.kind !== "injected" || !it.from) continue;
+    const a = parseAgentFrom(it.from);
+    if (a) return { ...a, at: it.ts ?? null };
+  }
+  return null;
+}
 export const SENDER_WEB_RE = /^from (\S+@\S+|agent:[A-Za-z0-9._\/-]{1,64}) via ([A-Za-z0-9.-]{1,253})\n/;
 export const SENDER_LOCAL_RE = /^via localhost\n/;
 export const SENDER_LOCAL = "via localhost\n";
@@ -187,6 +207,7 @@ export function metaFrom(rec: any, meta: TranscriptMeta): void {
 // 親に見せる「子の状況」のうち、transcript から分かる部分
 export type TranscriptDetail = Omit<TranscriptMeta, "queue"> & {
   pending: Pending[]; // 保留中の割り込み（窓の中で分かる範囲）
+  parent: Parent | null; // 最後に文を送ってきた親エージェント
   lastHuman: { text: string; ts: string | null } | null;
   lastInjected: { from: string | null; via: string | null; text: string; ts: string | null } | null;
   lastAssistant: { text: string; ts: string | null } | null;
@@ -207,7 +228,7 @@ export function detailFromWindow(items: ChatItem[], meta: TranscriptMeta, offset
     else if (it.kind === "tool") tools.push({ name: it.name, summary: it.summary, ts: it.ts ?? null });
   }
   const { queue, ...rest } = meta;
-  return { ...rest, pending: pendingFrom(queue), lastHuman, lastInjected, lastAssistant, recentTools: tools.slice(-RECENT_TOOLS), offset };
+  return { ...rest, pending: pendingFrom(queue), parent: parentFrom(items), lastHuman, lastInjected, lastAssistant, recentTools: tools.slice(-RECENT_TOOLS), offset };
 }
 
 // [from, to) のバイト範囲を行単位で読む。範囲の先頭が行の途中なら、その行は捨てる
@@ -275,14 +296,14 @@ export async function readTranscript(path: string, opts: { offset?: number; befo
 
 // 一覧用の要約。サイズが変わったときだけ読み直す
 const summaryCache = new Map<string, { size: number; value: SessionSummary }>();
-export type SessionSummary = { title: string | null; last: ChatItem | null; lastAt: string | null };
+export type SessionSummary = { title: string | null; last: ChatItem | null; lastAt: string | null; parent: Parent | null };
 export async function summarize(path: string): Promise<SessionSummary> {
   const size = (await stat(path)).size;
   const hit = summaryCache.get(path);
   if (hit && hit.size === size) return hit.value;
   const r = await readRange(path, Math.max(0, size - 256 * 1024), size, true);
   const last = [...r.items].reverse().find((i) => i.kind !== "notice") ?? null;
-  const value = { title: r.title ?? hit?.value.title ?? null, last, lastAt: last?.ts ?? null };
+  const value = { title: r.title ?? hit?.value.title ?? null, last, lastAt: last?.ts ?? null, parent: parentFrom(r.items) ?? hit?.value.parent ?? null };
   summaryCache.set(path, { size, value });
   return value;
 }

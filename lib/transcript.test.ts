@@ -167,3 +167,25 @@ test("readTranscript は範囲内の queue を返し、detailFromWindow は pend
   expect(d.pending).toEqual([{ text: "保留中", from: null, via: "local", at: "t1" }]);
   expect((d as any).queue).toBeUndefined();
 });
+
+test("parseAgentFrom は <マシン>/<sessionId 先頭8文字>/<役割> を読む", async () => {
+  const { parseAgentFrom } = await import("./transcript");
+  expect(parseAgentFrom("agent:mac-a/6ac704ea/lead")).toEqual({ machine: "mac-a", sessionIdPrefix: "6ac704ea", label: "lead" });
+  expect(parseAgentFrom("agent:mac-a/lead")).toEqual({ machine: "mac-a", sessionIdPrefix: null, label: "lead" });
+  expect(parseAgentFrom("agent:lead")).toEqual({ machine: null, sessionIdPrefix: null, label: "lead" });
+  expect(parseAgentFrom("alice@example.com")).toBeNull();
+});
+
+test("summarize と detailFromWindow は最後の親（agent の送り主）を parent に出す", async () => {
+  const { summarize } = await import("./transcript");
+  const { path, size } = await fixture("parent", [
+    { type: "user", origin: { kind: "peer" }, isMeta: true, timestamp: "t1", message: { content: "Another Claude session sent a message:\nfrom agent:mac-a/6ac704ea/lead via hub.example.com\nやって\n\nThis came from another Claude session ..." } },
+    { type: "assistant", message: { content: [{ type: "text", text: "はい" }] }, timestamp: "t2" },
+  ]);
+  const sum = await summarize(path);
+  expect(sum.parent).toEqual({ machine: "mac-a", sessionIdPrefix: "6ac704ea", label: "lead", at: "t1" });
+  const d = detailFromWindow((await readRange(path, 0, size, false)).items, emptyMeta(), size);
+  expect(d.parent).toEqual({ machine: "mac-a", sessionIdPrefix: "6ac704ea", label: "lead", at: "t1" });
+  const none = await summarize((await fixture("noparent", [{ type: "assistant", message: { content: [{ type: "text", text: "x" }] }, timestamp: "t" }])).path);
+  expect(none.parent).toBeNull();
+});

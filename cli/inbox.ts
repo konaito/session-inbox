@@ -7,6 +7,7 @@ import { renderFooter, renderItems, renderList, renderSummary } from "./lib/rend
 import { apiFor, readLoop, startOffset, waitAll } from "./lib/read";
 import { lastSend, recordSend } from "./lib/sends";
 import { spawnPlan, sh } from "./lib/spawn";
+import { agentName } from "./lib/identity";
 import { hostname } from "node:os";
 
 type Opts = { hub?: string; as?: string; since?: number; wait?: number; all: boolean; machine?: string; name?: string; args: string[] };
@@ -135,7 +136,9 @@ async function main(argv: string[]): Promise<number> {
   };
   // send: 応答の offset（書く直前の transcript の長さ）を sends.json に残す
   const send = async (text: string) => {
-    const r = await sendText(c, s, text, o.as);
+    // 名乗る名前は <このマシン>/<自分の sessionId 先頭8文字>/<役割>。--as は役割だけ
+    const as = agentName({ machine: await localMachine(), sessionId: process.env.CLAUDE_CODE_SESSION_ID, label: o.as });
+    const r = await sendText(c, s, text, as);
     // transcript がまだ無く offset が無いときも記録する（先頭から読めば送った文に当たる）
     recordSend(s.sessionId, { offset: startOffset(r.offset), text, at: new Date().toISOString() });
     return r;
