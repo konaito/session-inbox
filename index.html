@@ -47,6 +47,7 @@
   .side-head .spawn-btn { flex: none; font-size: 12px; color: var(--sub); padding: 3px 9px; border-radius: 999px; background: var(--wash); }
   .side-head .spawn-btn:hover { background: var(--wash-2); color: var(--ink); }
   .spawnform { margin: 0 12px 10px; padding: 10px; border-radius: 10px; background: var(--wash); display: grid; gap: 8px; }
+  .spawnform[hidden] { display: none; }
   .spawnform select, .spawnform input { font: inherit; font-size: 13px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--ink); width: 100%; }
   .spawnform-row { display: flex; align-items: center; gap: 10px; font-size: 12px; }
   .spawnform-row button { padding: 5px 12px; border-radius: 999px; background: var(--ink); color: var(--paper); font-size: 12px; }
@@ -362,6 +363,7 @@ async function loadSessions() {
     const r = await api("/api/sessions");
     sessions = r.sessions; machines = r.machines || [];
     $("conn").textContent = ""; $("conn").className = "conn";
+    if ($("spawn-m")) fillSpawnMachines();
   } catch (e) {
     // Access のログインが切れると fetch がリダイレクトで失敗する。押せば読み直してログインし直せる
     $("conn").innerHTML = `<button type="button" onclick="location.reload()">つながっていない · 再読み込み</button>`; $("conn").className = "conn bad";
@@ -382,7 +384,6 @@ function openChat(id) {
   $("back").onclick = () => { location.hash = ""; };
   $("feed").innerHTML = `<div class="note">読み込み中…</div>`;
   wireComposer();
-  wireSpawn();
   app.className = "app view-chat";
   renderList(); renderHead(); poll();
 }
@@ -587,12 +588,20 @@ function wireComposer() {
   if (!coarse) setTimeout(() => i.focus(), 0);
 }
 
+// 子を立てる先のマシン。一覧を読むたびに入れ直し、選んでいたものは残す
+function fillSpawnMachines() {
+  const sel = $("spawn-m");
+  const keep = sel.value;
+  const names = machines.filter((m) => m.ok).map((m) => m.name);
+  sel.innerHTML = names.map((n) => `<option value="${esc(n)}">${esc(n)}</option>`).join("") || `<option value="">（マシンがありません）</option>`;
+  if (names.includes(keep)) sel.value = keep;
+}
+
 // 子を立てる。ノードが tmux で claude を起動し、一覧に出たら開く
 function wireSpawn() {
   const form = $("spawnform"), btn = $("spawn-btn"), msg = $("spawn-msg");
   btn.onclick = () => {
-    const sel = $("spawn-m");
-    sel.innerHTML = machines.filter((m) => m.ok).map((m) => `<option value="${esc(m.name)}">${esc(m.name)}</option>`).join("");
+    fillSpawnMachines();
     form.hidden = !form.hidden;
     if (!form.hidden) $("spawn-dir").focus();
   };
@@ -627,6 +636,8 @@ function route() {
 addEventListener("hashchange", route);
 
 (async () => {
+  // 子を立てる欄は一覧側にあるので、会話を開かなくても動くように最初に配線する
+  wireSpawn();
   await loadSessions();
   route();
   // 広い画面で何も選んでいなければ、作業中のものか先頭を開く
