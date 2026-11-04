@@ -65,6 +65,8 @@
   @keyframes ring { 0% { transform: scale(.4); opacity: .7; } 100% { transform: scale(1.4); opacity: 0; } }
 
   .row .mach { color: var(--sub); }
+  .row .rel { color: var(--sub); font-weight: 500; }
+  #h-sub a { color: inherit; text-decoration: underline dotted; }
   .down { margin: 0 12px 8px; padding: 8px 12px; border-radius: 8px; background: var(--shu-wash); color: var(--shu-ink); font-size: 12.5px; }
   .empty { color: var(--faint); font-size: 14px; padding: 28px 16px; line-height: 1.8; }
 
@@ -298,13 +300,31 @@ function activity(s) {
   return `<span class="txt">${esc(who + String(l.text).replace(/\s+/g, " "))}</span>`;
 }
 
+// 親子の関係。子の transcript に残る「from agent:<マシン>/<sessionId 先頭8文字>/<役割>」から親をたどる
+function parentOf(s) {
+  const p = s.parent;
+  if (!p) return null;
+  const found = p.sessionIdPrefix ? sessions.find((x) => x.sessionId.startsWith(p.sessionIdPrefix) && (!p.machine || x.machine === p.machine)) : null;
+  return { session: found || null, label: p.label, machine: p.machine };
+}
+function childrenOf(s) {
+  return sessions.filter((x) => x.parent && x.parent.sessionIdPrefix && s.sessionId.startsWith(x.parent.sessionIdPrefix) && (!x.parent.machine || x.parent.machine === s.machine));
+}
+function relChips(s) {
+  const out = [];
+  const p = parentOf(s);
+  if (p) out.push(`<span class="rel">↳ 親 ${esc(p.session ? (p.session.title || p.session.name || p.session.sessionId.slice(0, 8)) : `${p.machine || ""}/${p.label}`)}</span>`);
+  const kids = childrenOf(s);
+  if (kids.length) out.push(`<span class="rel">子 ${kids.length}</span>`);
+  return out.length ? ` · ${out.join(" · ")}` : "";
+}
 function renderList() {
   const busy = sessions.filter((s) => s.status === "busy").length;
   $("count").textContent = sessions.length ? `${sessions.length}件${busy ? ` · ${busy}件が作業中` : ""}` : "";
   const html = sessions.map((s) => `
     <button class="row ${s.status === "busy" ? "busy" : ""} ${cur && cur.id === s.sessionId ? "on" : ""}" data-id="${s.sessionId}">
       <div class="l1"><span class="ttl">${esc(s.title || s.name || s.sessionId.slice(0, 8))}</span><span class="when">${esc(ago(s.lastAt || s.startedAt))}</span></div>
-      <div class="l2">${machines.length > 1 ? `<span class="mach">${esc(s.machine)}</span> · ` : ""}${esc(base(s.cwd))}${s.kind === "background" ? " · バックグラウンド" : ""}${s.hasSocket ? "" : " · 送信できない"}</div>
+      <div class="l2">${machines.length > 1 ? `<span class="mach">${esc(s.machine)}</span> · ` : ""}${esc(base(s.cwd))}${s.kind === "background" ? " · バックグラウンド" : ""}${s.hasSocket ? "" : " · 送信できない"}${relChips(s)}</div>
       <div class="l3"><span class="pulse"></span>${activity(s)}</div>
     </button>`).join("") || `<div class="empty">いま動いているセッションはありません。<br>ターミナルで claude を起動すると、ここに出ます。</div>`;
   const down = machines.filter((m) => !m.ok).map((m) => `<div class="down">${esc(m.name)} につながっていない</div>`).join("");
@@ -380,7 +400,12 @@ function renderHead() {
   }
   cur.title = s.title || s.name || cur.title;
   $("h-title").textContent = cur.title || s.sessionId;
-  $("h-sub").textContent = (machines.length > 1 ? `${s.machine} · ` : "") + home(s.cwd);
+  const p = parentOf(s);
+  const kids = childrenOf(s);
+  const link = (x) => `<a href="#/s/${x.sessionId}">${esc(x.title || x.name || x.sessionId.slice(0, 8))}</a>`;
+  $("h-sub").innerHTML = esc((machines.length > 1 ? `${s.machine} · ` : "") + home(s.cwd))
+    + (p ? ` · 親: ${p.session ? link(p.session) : esc(`${p.machine || ""}/${p.label}`)}` : "")
+    + (kids.length ? ` · 子: ${kids.map(link).join("、")}` : "");
   const busy = s.status === "busy";
   st.className = "state" + (busy ? " busy" : "");
   $("h-state-t").textContent = busy ? "作業中" : "待機中";

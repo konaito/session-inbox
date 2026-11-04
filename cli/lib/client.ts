@@ -2,9 +2,9 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { readFileSync } from "node:fs";
-import type { ChatItem, QueueEvent, TranscriptDetail } from "../../lib/transcript";
+import type { ChatItem, Parent, QueueEvent, TranscriptDetail } from "../../lib/transcript";
 
-export type Session = { machine: string; sessionId: string; name: string | null; title: string | null; status: string | null; waitingFor: string | null; cwd: string; lastAt: string | null; startedAt: number };
+export type Session = { machine: string; sessionId: string; name: string | null; title: string | null; status: string | null; waitingFor: string | null; cwd: string; lastAt: string | null; startedAt: number; parent?: Parent | null };
 export type Machine = { name: string; ok: boolean; error?: string };
 export type SessionDetail = TranscriptDetail & { machine: string; sessionId: string; name: string | null; cwd: string | null; status: string | null; waitingFor: string | null; startedAt: number | null };
 export type Client = { base: string; local: boolean; headers: Record<string, string> };
