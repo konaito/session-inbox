@@ -1,12 +1,11 @@
 // 親の Claude Code が、別の Mac の子セッションを読み、文を送り、返事を読むための CLI
 // 使い方: inbox list | show <対象> | send <対象> <文|-> [--as <名前>] | read <対象> [--since <n>] [--wait <秒>] [--all] | run <対象> <文> [--wait <秒>]
-//        inbox spawn <マシン> <dir> [--name <tmux名>] | stop <マシン> <tmux名> | wait <対象>... [--wait <秒>]
-import { getSummary, listSessions, loadClient, sendText, type Client, type Session } from "./lib/client";
+//        inbox spawn <マシン> <dir> [--name <tmux名>] | stop <対象> | wait <対象>... [--wait <秒>]
+import { getSummary, listSessions, loadClient, sendText, spawnSession, stopSession, type Client, type Session } from "./lib/client";
 import { resolveTarget } from "./lib/resolve";
 import { renderFooter, renderItems, renderList, renderSummary } from "./lib/render";
 import { apiFor, readLoop, startOffset, waitAll } from "./lib/read";
 import { lastSend, recordSend } from "./lib/sends";
-import { spawnPlan, sh } from "./lib/spawn";
 import { agentName } from "./lib/identity";
 import { hostname } from "node:os";
 
@@ -54,42 +53,29 @@ async function localMachine(): Promise<string> {
   return hostname().replace(/\.local$/, "");
 }
 
-// spawn: tmux で claude を立て、信頼確認に答え、一覧に出るまで待って <マシン>/<名前> を返す。stop: その tmux を消す
-async function spawnOrStop(c: Client, cmd: "spawn" | "stop", machine: string, o: Opts): Promise<number> {
-  const dirOrName = o.args[2];
-  if (!dirOrName) throw new Error(cmd === "spawn" ? "spawn には <マシン> <dir> が要る" : "stop には <マシン> <tmux名> が要る");
-  const localHost = await localMachine();
-  if (cmd === "stop") {
-    const r = await sh(spawnPlan({ machine, dir: "~", name: dirOrName, localHost }).stop);
-    console.log(r.code === 0 ? `止めた: ${machine} の tmux ${dirOrName}` : `止められなかった: ${r.out}`);
-    return r.code === 0 ? 0 : 1;
-  }
-  const name = o.name ?? `child-${dirOrName.replace(/\/+$/, "").split("/").pop()}`;
-  const plan = spawnPlan({ machine, dir: dirOrName, name, localHost });
-  const abs = await sh(plan.pwd);
-  if (abs.code !== 0) throw new Error(`${machine} の ${dirOrName} に入れない: ${abs.out}`);
-  const started = await sh(plan.start);
-  if (started.code !== 0) throw new Error(`tmux を立てられなかった: ${started.out}`);
-  await Bun.sleep(6000);
-  await sh(plan.trust);
+// spawn: ノードの API で tmux の claude を立ててもらい、一覧に出るまで待って <マシン>/<名前> を返す
+async function spawn(c: Client, machine: string, o: Opts): Promise<number> {
+  const dir = o.args[2];
+  if (!dir) throw new Error("spawn には <マシン> <dir> が要る");
+  const r = await spawnSession(c, machine, dir, o.name);
   // 一覧に出るまで最大 40 秒待つ。cwd で見分ける
   for (let i = 0; i < 20; i++) {
     await Bun.sleep(2000);
     const { sessions } = await listSessions(c);
-    const s = sessions.find((x) => x.machine === machine && x.cwd === abs.out);
+    const s = sessions.find((x) => x.machine === r.machine && x.cwd === r.cwd);
     if (s) {
-      console.log(`${machine}/${s.name}  ${s.sessionId}  tmux=${name}  cwd=${abs.out}`);
+      console.log(`${r.machine}/${s.name}  ${s.sessionId}  tmux=${r.tmux}  cwd=${r.cwd}`);
       return 0;
     }
   }
-  throw new Error(`立てたが一覧に出てこない。ssh ${machine} で tmux attach -t ${name} を見る`);
+  throw new Error(`立てたが一覧に出てこない。${r.machine} で tmux attach -t ${r.tmux} を見る`);
 }
 
 async function main(argv: string[]): Promise<number> {
   const o = parseArgs(argv);
   const [cmd, target] = o.args;
   if (!cmd || cmd === "help" || cmd === "--help") {
-    console.log("使い方: inbox list | show <対象> | send <対象> <文|-> [--as <名前>] | read <対象> [--since <n>] [--wait <秒>] [--all] | run <対象> <文> [--wait <秒>]\n       inbox spawn <マシン> <dir> [--name <tmux名>] | stop <マシン> <tmux名> | wait <対象>... [--wait <秒>]\n対象は sessionId、その先頭 8 文字以上、<マシン>/<名前>、<名前>。--hub <URL> で手元のノードに向ける（試験専用）");
+    console.log("使い方: inbox list | show <対象> | send <対象> <文|-> [--as <名前>] | read <対象> [--since <n>] [--wait <秒>] [--all] | run <対象> <文> [--wait <秒>]\n       inbox spawn <マシン> <dir> [--name <tmux名>] | stop <対象> | wait <対象>... [--wait <秒>]\n対象は sessionId、その先頭 8 文字以上、<マシン>/<名前>、<名前>。--hub <URL> で手元のノードに向ける（試験専用）");
     return cmd ? 0 : 1;
   }
   const c = loadClient({ hub: o.hub });
@@ -99,7 +85,7 @@ async function main(argv: string[]): Promise<number> {
     return 0;
   }
   if (!target) throw new Error(`${cmd} には対象が要る`);
-  if (cmd === "spawn" || cmd === "stop") return await spawnOrStop(c, cmd, target, o);
+  if (cmd === "spawn") return await spawn(c, target, o);
   // wait: 送ってある複数の子を同時に待ち、子ごとに返事と生の状態を出す。終了コードはいちばん大きいもの
   if (cmd === "wait") {
     const { sessions } = await listSessions(c);
@@ -151,6 +137,11 @@ async function main(argv: string[]): Promise<number> {
     process.stdout.write(renderFooter({ status: r.last.status ?? (r.last.status === undefined ? "exited" : null), waitingFor: r.last.waitingFor, permissionMode: r.permissionMode, offset: r.offset }));
     return r.stop.code;
   };
+  if (cmd === "stop") {
+    const r = await stopSession(c, s);
+    console.log(`止めた: ${s.machine}/${s.name}（pid ${r.pid}）`);
+    return 0;
+  }
   if (cmd === "send") {
     const r = await send(await readText(o.args[2]));
     console.log(`送った。pid ${r.pid}、status ${r.status ?? "不明"}、offset ${r.offset ?? "不明"}`);

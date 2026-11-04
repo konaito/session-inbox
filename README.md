@@ -2,7 +2,7 @@
 
 See and steer your running Claude Code sessions from anywhere, and let one Claude Code session drive sessions on your other machines.
 
-- A web page (PWA) lists every running Claude Code session on all your Macs, shows the conversation, and lets you send a message into any of them.
+- A web page (PWA) lists every running Claude Code session on all your Macs, shows the conversation, lets you send a message into any of them, and can start and stop child sessions.
 - A CLI (`inbox`) lets a "parent" Claude Code session spawn "child" sessions on another Mac, read their situation, send instructions, and read the replies.
 - Everything runs on your own Cloudflare account. No Remote Control, no third-party relay. Cloudflare Access guards the page with your email and the CLI with a service token.
 
@@ -29,8 +29,9 @@ server.ts reads and writes on each Mac
 - **hub** (`hub/`, Cloudflare Worker built with [Void](https://void.cloud)): verifies the Access JWT (an email for humans, a service-token `common_name` for parent sessions) and relays to the right node.
 - **page** (`index.html` + `public/`): one file, no framework. Served by the node and copied into the hub by `scripts/deploy-hub.sh`.
 - **CLI** (`cli/inbox.ts`): `list`, `show`, `send`, `read`, `run`, `wait`, `spawn`, `stop`. A Claude Code skill in `skills/session-inbox/` teaches a parent session when and how to use it.
+- **children**: `spawn` asks the node on the target Mac to start `claude --dangerously-skip-permissions` inside tmux (the node answers Claude Code's folder-trust prompt). No SSH is involved. `stop` ends that Claude process. The page has the same two actions, so a phone or a browser-driving agent can create and stop children too.
 
-A message injected from outside arrives in the session as "Another Claude session sent a message", with a first line `from <email> via <hub host>` (human) or `from agent:<name> via <hub host>` (parent session). Claude Code treats it as a peer request: it cannot approve permission prompts, change settings, or run slash commands.
+A message injected from outside arrives in the session as "Another Claude session sent a message", with a first line `from <email> via <hub host>` (human) or `from agent:<name> via <hub host>` (parent session, or a human who filled in the page's sender-name field, for example an agent operating the page on your behalf). Parents name themselves `<machine>/<session id prefix>/<role>`, which is how the page and `inbox show` link children to their parent. Claude Code treats it as a peer request: it cannot approve permission prompts, change settings, or run slash commands.
 
 ## Requirements
 
@@ -72,11 +73,11 @@ Environment variables for `server.ts`: `PORT`, `MACHINE_NAME`, `ACCESS_TEAM_DOMA
 
 ```bash
 inbox list                                   # sessions on every machine
-inbox spawn mac-b ~/Documents/project        # start a child (tmux + claude --dangerously-skip-permissions over ssh)
+inbox spawn mac-b ~/Documents/project        # start a child on mac-b (the node runs tmux + claude --dangerously-skip-permissions)
 inbox show mac-b/project-3f                  # branch, PR, permission mode, status, Claude's own recap, last exchange, pending interrupts
 inbox run mac-b/project-3f "..." --as mac-a/lead --wait 600   # send and wait for the reply
 inbox wait mac-b/a-1 mac-b/b-2 --wait 600    # wait for several children at once
-inbox stop mac-b child-project               # kill the child's tmux session
+inbox stop mac-b/project-3f                  # stop the child
 ```
 
 `read`, `run` and `wait` exit with 0 when the reply is complete, 2 on timeout, 3 when the child is waiting for human input (a permission prompt or a question), 4 when the message is still queued. They always print the raw `status`, `waitingFor`, `permissionMode` and transcript `offset` at the end so the parent can judge for itself.
@@ -86,7 +87,7 @@ inbox stop mac-b child-project               # kill the child's tmux session
 - The parent service token can read every transcript on every node and send to every session. Keep it at mode 0600; the CLI refuses to attach it to any host other than the configured hub.
 - The first line of an injected message is not proof of identity. Any process on the same Mac can write the same line to the socket.
 - Sending to a session that is blocked on a permission prompt usually queues the message until the prompt is resolved, but in one of three observed cases it interrupted the prompt (declining the tool). The skill tells parents not to send to a `waiting` session.
-- `inbox spawn` starts children with `--dangerously-skip-permissions` so they can work unattended. Decide whether that is acceptable on your machines.
+- `inbox spawn` and the page's "start a child" button start children with `--dangerously-skip-permissions` so they can work unattended. Decide whether that is acceptable on your machines. The stop button ends a Claude process; it is shown only for sessions that were spawned this way or that have a parent.
 
 ## Development
 

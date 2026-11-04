@@ -2,7 +2,7 @@
 
 起動中の Claude Code セッションをどこからでも見て割り込み、1つの Claude Code セッションから別のマシンのセッションを動かすためのツール。
 
-- ウェブの画面（PWA）で、全マシンの起動中セッションを一覧し、会話を読み、文を送って割り込む。
+- ウェブの画面（PWA）で、全マシンの起動中セッションを一覧し、会話を読み、文を送って割り込む。子セッションを立てる、止めることもできる。
 - CLI（`inbox`）で、親の Claude Code セッションが別の Mac に子セッションを立て、状況を読み、命令し、返事を読む。
 - すべて自分の Cloudflare アカウントで動く。Remote Control も他人の中継も使わない。画面は Cloudflare Access のメール認証、CLI はサービストークンで守る。
 
@@ -29,8 +29,9 @@ server.ts が各 Mac で読み書きするもの
 - ハブ `hub/`（[Void](https://void.cloud) で書いた Cloudflare Worker）。Access の JWT（本人ならメール、親セッションならサービストークンの `common_name`）を確かめて、セッションのあるノードに中継する。
 - 画面 `index.html` と `public/`。1枚のファイルで、フレームワークは使わない。ノードが配り、`scripts/deploy-hub.sh` がハブに写す。
 - CLI `cli/inbox.ts`。`list`、`show`、`send`、`read`、`run`、`wait`、`spawn`、`stop`。`skills/session-inbox/` の Claude Code スキルが、親セッションにいつどう使うかを教える。
+- 子。`spawn` は相手の Mac のノードに頼み、ノードが tmux の中で `claude --dangerously-skip-permissions` を起動する（Claude Code の「このフォルダを信頼するか」にはノードが答える）。ssh は要らない。`stop` はその claude のプロセスを終わらせる。画面にも同じ2つの操作があるので、スマホや、ブラウザを操作するエージェントからも子を立てて止められる。
 
-外から送った文は、セッションに「別のセッションからのメッセージ」として届き、1行目に `from <メール> via <ハブのホスト名>`（本人）か `from agent:<名前> via <ハブのホスト名>`（親セッション）が付く。Claude Code はそれを別セッションからの依頼として扱う。権限プロンプトの承認、設定の変更、スラッシュコマンドには使えない。
+外から送った文は、セッションに「別のセッションからのメッセージ」として届き、1行目に `from <メール> via <ハブのホスト名>`（本人）か `from agent:<名前> via <ハブのホスト名>`（親セッション。画面の「名乗り」に名前を入れた本人、たとえば本人の代わりに画面を操作するエージェントも同じ）が付く。親は `<マシン>/<sessionId の先頭8文字>/<役割>` と名乗り、画面と `inbox show` はそれで子から親をたどる。Claude Code はそれを別セッションからの依頼として扱う。権限プロンプトの承認、設定の変更、スラッシュコマンドには使えない。
 
 ## 前提
 
@@ -72,11 +73,11 @@ server.ts が各 Mac で読み書きするもの
 
 ```bash
 inbox list                                   # 全マシンのセッション
-inbox spawn mac-b ~/Documents/project        # 子を立てる（ssh 越しに tmux で claude --dangerously-skip-permissions）
+inbox spawn mac-b ~/Documents/project        # mac-b に子を立てる（ノードが tmux で claude --dangerously-skip-permissions を起動）
 inbox show mac-b/project-3f                  # ブランチ、PR、権限モード、status、Claude 自身の要約、最後のやり取り、保留中の割り込み
 inbox run mac-b/project-3f "..." --as mac-a/lead --wait 600   # 送って返事を待つ
 inbox wait mac-b/a-1 mac-b/b-2 --wait 600    # 複数の子を同時に待つ
-inbox stop mac-b child-project               # 子の tmux を消す
+inbox stop mac-b/project-3f                  # 子を止める
 ```
 
 `read`、`run`、`wait` の終了コードは、0 が返事が出そろった、2 が時間切れ、3 が子が本人の入力待ち（権限プロンプトか質問）、4 が送った文が保留のまま。どの場合も最後に `status`、`waitingFor`、`permissionMode`、transcript の `offset` を生のまま出すので、親が自分で判断できる。
@@ -86,7 +87,7 @@ inbox stop mac-b child-project               # 子の tmux を消す
 - parent のサービストークンは、全ノードの会話を読み、全セッションに送れる。0600 で置く。CLI は設定したハブ以外のホストにはトークンを付けない。
 - 送った文の1行目は本人の証明にならない。同じ Mac の他のプロセスも同じ行をソケットに書ける。
 - 権限プロンプトで止まっているセッションに送ると、ふつうは保留されてプロンプトが解けてから届くが、観測した3回のうち1回はプロンプトを中断して（ツールを「No」にして）届いた。スキルは `waiting` の子には送らないと決めている。
-- `inbox spawn` は子を `--dangerously-skip-permissions` で立てる。自分のマシンでそれを許すかは自分で決める。
+- `inbox spawn` と画面の「子を立てる」は、子を `--dangerously-skip-permissions` で立てる。自分のマシンでそれを許すかは自分で決める。「止める」は claude のプロセスを終わらせる操作で、画面では立てた子か親のある子にだけ出る。
 
 ## 開発
 

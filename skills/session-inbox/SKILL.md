@@ -32,14 +32,14 @@ description: 別の Mac で Claude Code のセッション（子）を立て、�
 3. `inbox show <対象>` で状況を読む。`status`、`permissionMode`、ブランチ、PR、Claude Code 自身の要約、最後のやり取り、保留中の割り込み。
 4. 子が1体なら `inbox run <対象> "<文>" --as <自分の役割名> --wait 600` で送って返事を待つ。名乗る名前は CLI が `<このマシン名>/<自分の sessionId の先頭8文字>/<役割名>` に組み立てるので、`--as` は役割名だけ（例: lead、reviewer）。複数なら `inbox send` を全部出してから `inbox wait <対象>... --wait 600`。
 5. 終了コードで分ける。0 は返事が出そろった。2 は時間切れで、`inbox read <対象> --wait 600` で続きを待つ。3 は本人の入力待ちで、本人に知らせる。4 は送った文が保留のままで、待つ。
-6. 済んだら `inbox stop <マシン> <tmux名>` で子を消す。本人の指示で残す場合はそのまま。
+6. 済んだら `inbox stop <対象>` で子を止める。本人の指示で残す場合はそのまま。
 
 ## コマンド
 
 ```bash
 inbox list                                     # 全マシンのセッション
-inbox spawn <マシン> <dir> [--name <tmux名>]     # 子を立てる。tmux で claude --dangerously-skip-permissions。<マシン>/<名前> と sessionId を返す
-inbox stop <マシン> <tmux名>                     # 子の tmux を消す（既定の tmux 名は child-<dir の末尾>）
+inbox spawn <マシン> <dir> [--name <tmux名>]     # 子を立てる。そのマシンのノードが tmux で claude --dangerously-skip-permissions を起動する。<マシン>/<名前> と sessionId を返す
+inbox stop <対象>                               # 子を止める（その claude のプロセスを終わらせる）
 inbox show <対象>                               # 1つのセッションの状況
 inbox send <対象> "<文>" [--as <名前>]           # 文を送る。応答の offset を覚える
 inbox read <対象> [--wait <秒>] [--all]         # 最後に送った文への返事を読む（既定 120 秒まで待つ）
@@ -51,7 +51,7 @@ inbox show <sessionId> --machine <マシン>        # 終了して一覧に無�
 
 `<対象>` は sessionId、その先頭 8 文字以上、`<マシン>/<名前>`、`<名前>` のどれか。名前が2台にあると候補を出して止まる。`<文>` を `-` にすると標準入力から読む。`--as` は役割名だけで、使えない文字は `-` になる。
 
-`spawn` は `ssh <マシン>` で tmux を立てる（ssh のホスト名はマシン名と同じ）。初めてのディレクトリは Claude Code の信頼確認が出るので自動で答える。一覧に出るまで最大 40 秒待つ。この Mac なら ssh を使わない。
+`spawn` はハブ経由でそのマシンのノードに頼む。ノードが tmux を立て、初めてのディレクトリで出る Claude Code の信頼確認に自動で答える。一覧に出るまで最大 40 秒待つ。ssh は要らない。画面（ハブのページ）の「子を立てる」も同じ API を呼ぶ。
 
 どの場合も `read` と `run` の最後に `status`、`waitingFor`、`permissionMode`、`offset` が生のまま出る。終了判定に頼らず自分で見る。
 

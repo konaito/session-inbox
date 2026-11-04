@@ -88,6 +88,7 @@ function findSocket(pid: number): string | null {
 }
 
 import { type ChatItem, type SessionSummary, readTranscript, readBack, detailFromWindow, emptyMeta, summarize, SENDER_LOCAL, isValidWebFrom, isValidViaHost } from "./lib/transcript";
+import { spawnChild, stopProcess, stopTarget } from "./lib/spawn";
 
 // 受信ソケットに1行書いて閉じる。応答は待たない（届いたかは transcript で見る）
 async function sendToSocket(sockPath: string, text: string): Promise<void> {
@@ -187,6 +188,9 @@ const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json; charset=utf-8" } });
 
 // ---------- このマシンの処理 ----------
+// この起動中に spawn で立てた子の作業ディレクトリ。画面が「止める」を出す目印にする（再起動で消える）
+const spawnedCwds = new Set<string>();
+
 async function localSessions() {
   const rows = await listAgents();
   return Promise.all(
@@ -209,6 +213,7 @@ async function localSessions() {
         startedAt: r.startedAt,
         hasTranscript: path !== null,
         hasSocket: findSocket(r.pid) !== null,
+        spawned: spawnedCwds.has(r.cwd),
       };
     }),
   );
@@ -274,7 +279,35 @@ async function localSend(sessionId: string, req: Request, via: "web" | "local"):
   return json({ accepted: true, pid: row.pid, status: row.status ?? null, offset }, 202);
 }
 
-const SESSION_PATH = /^\/api\/sessions\/([0-9a-f-]{36})\/(messages|send|summary)$/;
+// 子を立てる。tmux で claude を起動し、作業ディレクトリと tmux 名を返す。一覧に出るのは数秒後なので、呼ぶ側は cwd で見つける
+async function localSpawn(req: Request): Promise<Response> {
+  const body = (await req.json().catch(() => null)) as { dir?: unknown; name?: unknown } | null;
+  const dir = typeof body?.dir === "string" ? body.dir.trim() : "";
+  if (!dir) return json({ error: "dir is required" }, 400);
+  try {
+    const r = await spawnChild({ dir, name: typeof body?.name === "string" && body.name ? body.name : undefined });
+    spawnedCwds.add(r.cwd);
+    return json({ machine: MACHINE, cwd: r.cwd, tmux: r.name }, 202);
+  } catch (e) {
+    return json({ error: String(e instanceof Error ? e.message : e) }, 400);
+  }
+}
+
+// 子を止める。その claude のプロセスを終わらせる（tmux の中なら窓も閉じる）
+async function localStop(sessionId: string): Promise<Response | null> {
+  const row = (await listAgents(true)).find((r) => r.sessionId === sessionId);
+  if (!row) return null;
+  try {
+    const pid = stopTarget(row);
+    stopProcess(pid);
+    spawnedCwds.delete(row.cwd);
+    return json({ stopped: true, pid }, 202);
+  } catch (e) {
+    return json({ error: String(e instanceof Error ? e.message : e) }, 400);
+  }
+}
+
+const SESSION_PATH = /^\/api\/sessions\/([0-9a-f-]{36})\/(messages|send|summary|stop)$/;
 
 // ---------- 画面と API（127.0.0.1、トンネル経由） ----------
 Bun.serve({
@@ -319,6 +352,8 @@ Bun.serve({
         return json({ sessions, machines: [{ name: MACHINE, ok: true }] });
       }
 
+      if (req.method === "POST" && url.pathname === "/api/sessions/spawn") return await localSpawn(req);
+
       const m = url.pathname.match(SESSION_PATH);
       if (m) {
         const [, sessionId, action] = m;
@@ -330,6 +365,9 @@ Bun.serve({
         }
         if (req.method === "POST" && action === "send") {
           return (await localSend(sessionId, req, "local")) ?? json({ error: "session is not running" }, 404);
+        }
+        if (req.method === "POST" && action === "stop") {
+          return (await localStop(sessionId)) ?? json({ error: "session is not running" }, 404);
         }
       }
 
@@ -367,6 +405,8 @@ if (NODE_PORT) {
         if (m && req.method === "GET" && m[2] === "messages") return (await localMessages(m[1], url)) ?? json({ error: "transcript not found" }, 404);
         if (m && req.method === "GET" && m[2] === "summary") return (await localSummary(m[1])) ?? json({ error: "session not found" }, 404);
         if (m && req.method === "POST" && m[2] === "send") return (await localSend(m[1], req, "web")) ?? json({ error: "session is not running" }, 404);
+        if (m && req.method === "POST" && m[2] === "stop") return (await localStop(m[1])) ?? json({ error: "session is not running" }, 404);
+        if (req.method === "POST" && url.pathname === "/api/sessions/spawn") return await localSpawn(req);
         return new Response("not found", { status: 404 });
       } catch (e) {
         console.error(e);

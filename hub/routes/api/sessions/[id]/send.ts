@@ -20,7 +20,8 @@ export const POST = defineHandler(async (c) => {
   const caller = verifiedCaller(c.req.raw) ?? ((c.env as any).DEV_NO_AUTH === "1" ? ({ kind: "user", email: "dev@localhost" } as const) : null);
   if (!caller) return c.json({ error: "no verified caller" }, 403);
   const as = typeof body?.as === "string" && AGENT_NAME_RE.test(body.as) ? body.as : null;
-  const from = caller.kind === "user" ? caller.email : `agent:${as ?? caller.commonName.slice(0, 8)}`;
+  // 本人でも as を名乗れば agent:<名乗り> で送る（画面から Muse などのエージェントが送るとき用）。親エージェントは常に agent:
+  const from = caller.kind === "user" ? (as ? `agent:${as}` : caller.email) : `agent:${as ?? caller.commonName.slice(0, 8)}`;
   const res = await nodeFetch(env, node, `/api/sessions/${id}/send`, {
     method: "POST",
     headers: { "content-type": "application/json" },
